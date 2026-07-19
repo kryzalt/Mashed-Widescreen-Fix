@@ -24,11 +24,11 @@ Note that 2D UI and HUD element positioning is not yet fully implemented (which 
 1. Download the release `.zip` archive.
 2. Extract all files into your main game directory (where the game `.exe` is located):
    * `dinput8.dll` (The widescreen fix)
+   * `MashedFix.ini` (Configuration file)
    * `dsound.dll` (DSOAL)
    * `dsoal-aldrv.dll` (DSOAL dependency)
    * `alsoft.ini` (DSOAL configuration)
 3. Run the game. 
-   * **Note:** The configuration file `MashedFix.ini` will be created automatically in your game folder on the first run.
 
 ---
 
