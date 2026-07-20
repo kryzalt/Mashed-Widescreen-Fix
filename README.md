@@ -34,7 +34,7 @@ Note that 2D UI and HUD element positioning is not yet fully implemented (which 
 
 ### Configuration Options (`MashedFix.ini`)
 
-You can customize the mod by editing the automatically generated `MashedFix.ini` file with any text editor.
+You can customize the mod by editing `MashedFix.ini` file with any text editor.
 
 #### [General]
 * `SingleCoreAffinity` (Default: `1`): Runs the game on 1 CPU core (prevents crashes).
