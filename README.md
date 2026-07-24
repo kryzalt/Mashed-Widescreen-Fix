@@ -10,7 +10,8 @@ Note that 2D UI and HUD element positioning is not yet fully implemented (which 
 <details>
   <summary><b>Click to view screenshots</b></summary>
   <br>
-  <img src="https://github.com/user-attachments/assets/9773eeaa-8d66-499f-a3ad-d94916558c7d" width="800" alt="Widescreen fix 1" />
+  
+  <img src="https://github.com/user-attachments/assets/f4cc41d8-e703-4a13-8bed-170c7ca72b61" width="800" alt="Widescreen fix 1" />
   <img src="https://github.com/user-attachments/assets/369b6d15-b92c-4ec6-bbc3-525a7186e088" width="800" alt="Widescreen fix 2" />
   <img src="https://github.com/user-attachments/assets/25cf2b22-54cc-48fb-a9e4-b3067ae6528c" width="800" alt="Widescreen fix 3" />
   <img src="https://github.com/user-attachments/assets/b477e9fa-b99d-4039-8c39-ac8a4260564e" width="800" alt="Widescreen fix 4" />
