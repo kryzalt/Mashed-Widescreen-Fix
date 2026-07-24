@@ -13,7 +13,6 @@
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "winmm.lib")
 
-// === PROXY EXPORTS ===
 extern "C" LPVOID g_pExports[5] = {0};
 extern "C" __declspec(naked) void DirectInput8Create_Proxy() { __asm jmp g_pExports[0] }
 extern "C" __declspec(naked) void DllCanUnloadNow_Proxy()    { __asm jmp g_pExports[1] }
@@ -27,12 +26,10 @@ extern "C" __declspec(naked) void DllUnregisterServer_Proxy() { __asm jmp g_pExp
 #pragma comment(linker, "/EXPORT:DllRegisterServer=_DllRegisterServer_Proxy,PRIVATE")
 #pragma comment(linker, "/EXPORT:DllUnregisterServer=_DllUnregisterServer_Proxy,PRIVATE")
 
-// === GLOBALS ===
 HMODULE g_hModule = nullptr;
 char g_szAOBLogPath[MAX_PATH] = {0};
 char g_szIniPath[MAX_PATH] = {0};
 
-// === CONFIG ===
 struct Config {
     bool SingleCoreAffinity = true;
     bool CrashHandler = true;
@@ -85,23 +82,19 @@ void LoadConfiguration() {
         else strcpy_s(g_szIniPath, "MashedFix.ini");
     } else strcpy_s(g_szIniPath, "MashedFix.ini");
 
-    // Если файла нет — создаём со всеми значениями по умолчанию
     if (GetFileAttributesA(g_szIniPath) == INVALID_FILE_ATTRIBUTES) {
         for (auto& e : g_ConfigTable)
             WritePrivateProfileStringA(e.section, e.key, e.def, g_szIniPath);
     } else {
-        // Файл есть — проверяем каждый параметр; если отсутствует, дописываем дефолт
         for (auto& e : g_ConfigTable) {
             char buf[32] = {0};
             GetPrivateProfileStringA(e.section, e.key, "", buf, sizeof(buf), g_szIniPath);
             if (buf[0] == '\0') {
-                // Параметр не найден — записываем значение по умолчанию
                 WritePrivateProfileStringA(e.section, e.key, e.def, g_szIniPath);
             }
         }
     }
 
-    // Читаем все параметры
     for (auto& e : g_ConfigTable) {
         if (e.type == ConfigEntry::INT)
             *(bool*)e.ptr = GetPrivateProfileIntA(e.section, e.key, atoi(e.def), g_szIniPath) != 0;
@@ -114,7 +107,6 @@ void LoadConfiguration() {
     }
 }
 
-// === LOGGING ===
 void InitAOBLogger() {
     if (g_hModule) {
         GetModuleFileNameA(g_hModule, g_szAOBLogPath, MAX_PATH);
@@ -136,7 +128,6 @@ void Log(const char* fmt, ...) {
     fprintf(f, "\n"); fclose(f);
 }
 
-// === CRASH HANDLER ===
 LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep) {
     SYSTEMTIME st; GetLocalTime(&st);
     char path[MAX_PATH];
@@ -153,7 +144,6 @@ LONG WINAPI CrashHandler(EXCEPTION_POINTERS* ep) {
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
-// === AOB SCANNER ===
 struct PatByte { bool wild; unsigned char val; };
 
 std::string AddrStr(uintptr_t addr) {
@@ -233,7 +223,6 @@ uintptr_t Find(const char* pattern, uintptr_t start = 0) {
     return m.empty() ? 0 : m[0];
 }
 
-// === PATCH HELPERS ===
 void* PlaceHook(void* target, void* hook, int len) {
     if (len < 5) { Log("[ERR] Hook len<5 at %s", AddrStr((uintptr_t)target).c_str()); return nullptr; }
     DWORD prot;
@@ -294,7 +283,6 @@ void PatchByte(uintptr_t addr, BYTE val) {
 
 uintptr_t ResolveCall(uintptr_t addr) { return addr + 5 + *(int*)(addr + 1); }
 
-// === TYPES ===
 struct RwV2d { float x, y; };
 struct RwV3d { float x, y, z; };
 struct RwMatrix { RwV3d right; unsigned int f; RwV3d up; unsigned int p1; RwV3d at; unsigned int p2; RwV3d pos; unsigned int p3; };
@@ -312,7 +300,6 @@ typedef HRESULT (STDMETHODCALLTYPE* CreateDevice_t)(IDirect3D9*, UINT, D3DDEVTYP
 typedef HRESULT (STDMETHODCALLTYPE* Reset_t)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
 typedef HRESULT (STDMETHODCALLTYPE* Present_t)(IDirect3DDevice9*, const RECT*, const RECT*, HWND, const RGNDATA*);
 
-// === HOOK STATE ===
 RwCameraSetViewWindow_t orig_RwCameraSetViewWindow = nullptr;
 RwFrameTranslate_t orig_RwFrameTranslate = nullptr;
 GetActiveCameraMatrix_t pGetActiveCameraMatrix = nullptr;
@@ -338,7 +325,6 @@ int* g_GameState_ptr = nullptr;
 int* p_dword_777F5C = nullptr;
 void* g_PlatformID_ptr = nullptr;
 
-// === UTILITY ===
 float GetGameAspectRatio() {
     HWND hWnd = GetActiveWindow();
     if (hWnd) {
@@ -389,7 +375,6 @@ void LimitFPS(double target) {
     QueryPerformanceCounter(&last);
 }
 
-// === D3D9 HOOKS ===
 HRESULT STDMETHODCALLTYPE hk_Present(IDirect3DDevice9* This, const RECT* s, const RECT* d, HWND h, const RGNDATA* r) {
     if (cfg.LimitFPS) LimitFPS(cfg.TargetFPS);
     return orig_Present(This, s, d, h, r);
@@ -431,7 +416,6 @@ void HookD3D9Vtable(IDirect3D9* d3d) {
 IDirect3D9* WINAPI hk_Direct3DCreate9(UINT v) { IDirect3D9* d = orig_Direct3DCreate9(v); if (d) HookD3D9Vtable(d); return d; }
 HRESULT WINAPI hk_Direct3DCreate9Ex(UINT v, IDirect3D9Ex** pp) { HRESULT hr = orig_Direct3DCreate9Ex(v, pp); if (SUCCEEDED(hr) && pp && *pp) HookD3D9Vtable(*pp); return hr; }
 
-// === ASPECT FIX ===
 void* __cdecl hk_RwCameraSetViewWindow(void* cam, const RwV2d* vw) {
     if (!cam || !vw) return orig_RwCameraSetViewWindow(cam, vw);
     float aspect = 1.3333333f;
@@ -448,7 +432,6 @@ void* __cdecl hk_RwCameraSetViewWindow(void* cam, const RwV2d* vw) {
     return orig_RwCameraSetViewWindow(cam, vw);
 }
 
-// === FLAG FIX ===
 #pragma optimize("", off)
 RwMatrix* Call_GetActiveCameraMatrix(int p) { return pGetActiveCameraMatrix ? pGetActiveCameraMatrix(p) : nullptr; }
 
@@ -514,7 +497,6 @@ __declspec(naked) void hk_FlagLea2() {
     }
 }
 
-// === HUD FIX ===
 void __cdecl hk_HUD_DrawMessageBox() {
     float origX = 0; bool saved = false;
     if (pDefaultTextPos) {
@@ -592,7 +574,6 @@ void __cdecl hk_sub_4045D0() {
     } __except(1) {}
 }
 
-// === FOCUS/AUDIO ===
 void __cdecl hk_UpdateMatchState(int a0) {
     if (cfg.PauseOnFocusLoss && g_GameState_ptr && *g_GameState_ptr == 3 && !IsGameFocused()) return;
     orig_UpdateMatchState(a0);
@@ -604,7 +585,6 @@ int __cdecl hk_ShouldMuteSound() {
     return f ? 0 : 1;
 }
 
-// === TRAMPOLINE FIX ===
 __declspec(naked) void hk_TrampolineFix() {
     __asm {
         push eax
@@ -618,7 +598,6 @@ __declspec(naked) void hk_TrampolineFix() {
     }
 }
 
-// === PATTERNS ===
 namespace Pat {
     constexpr const char* CameraMatrix   = "83 F8 03 75 1F 83 7C 24 04 FF 75 0C A1 ? ? ? ? 8B 40 04 83 C0 10 C3";
     constexpr const char* SetViewWindow  = "8B 44 24 08 56 8B 74 24 08 8B 08 D9 05 ? ? ? ?";
@@ -642,7 +621,6 @@ namespace Pat {
 	constexpr const char* VehicleHudPos  = "D9 04 85 ? ? ? ? D9 E1";
 }
 
-// === INIT ===
 DWORD WINAPI InitPlugin(LPVOID) {
     LoadConfiguration();
 
@@ -688,7 +666,6 @@ DWORD WINAPI InitPlugin(LPVOID) {
 
     if (cfg.MinimapFix) {
         if (auto a = Find(Pat::MinimapPos)) {
-            // Offset 10: float immediate in "mov [esp+44h], 3FD9999Ah" (1.7f -> 2.5f)
             PatchFloat(a, 10, 2.4f);
             Log("[OK] MinimapFix: patched 1.7 -> 2.4 at %s+10", AddrStr(a).c_str());
         }
@@ -696,16 +673,12 @@ DWORD WINAPI InitPlugin(LPVOID) {
 	
 	if (cfg.VehicleIconFix && fFlagMultiplier > 1.0f) {
     if (auto a = Find(Pat::VehicleHudPos)) {
-        // Извлекаем адрес g_vehicleHudPositions из инструкции
         uintptr_t hudPosAddr = *(uintptr_t*)(a + 3);
 
-        // Валидация: первый float должен быть ~0.48
         float check = *(float*)hudPosAddr;
         if (check > 0.4f && check < 0.55f) {
-            // 4 иконки, stride = 3 float'а (X,Y,Z) = 12 байт
-            // Патчим только X (offset 0 в каждой тройке)
             for (int i = 0; i < 4; i++) {
-                int off = i * 12;  // 0, 12, 24, 36
+                int off = i * 12;  
                 float oldX = *(float*)(hudPosAddr + off);
                 float newX = oldX * fFlagMultiplier;
                 PatchFloat(hudPosAddr, off, newX);
@@ -749,7 +722,6 @@ DWORD WINAPI InitPlugin(LPVOID) {
     return 0;
 }
 
-// === DLLMAIN ===
 void LoadOriginalDInput8() {
     char path[MAX_PATH]; GetSystemDirectoryA(path, sizeof(path)); strcat_s(path, "\\dinput8.dll");
     HMODULE h = LoadLibraryA(path);
