@@ -62,7 +62,7 @@ You can customize the mod by editing `MashedFix.ini` file with any text editor.
 ---
 
 ### Support the Project / Donations
-To make this fix possible, I have to reverse-engineer the game, which takes a lot of time and effort. Donations directly help support ongoing development and get this project closer to a final release. 
+To make this fix possible, I have to reverse-engineer really big part of the game, which takes a lot of time and effort. Donations directly help support ongoing development and get this project closer to a final release. 
 
 If you find this useful, please consider supporting my work:
 
