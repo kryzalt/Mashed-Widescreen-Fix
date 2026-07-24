@@ -44,6 +44,8 @@ struct Config {
     bool HudFix = true;
     bool FlagFix = true;
     bool ShowWinnerHUDFix = true;
+    bool MinimapFix = true;
+	bool VehicleIconFix = true;
     bool MuteOnFocusLoss = true;
     bool PauseOnFocusLoss = true;
     bool AOBLog = false;
@@ -68,6 +70,8 @@ static ConfigEntry g_ConfigTable[] = {
     {"Widescreen",    "HudFix",             "1",    ConfigEntry::INT,   &cfg.HudFix},
     {"Widescreen",    "FlagFix",            "1",    ConfigEntry::INT,   &cfg.FlagFix},
     {"Widescreen",    "ShowWinnerHUDFix",   "1",    ConfigEntry::INT,   &cfg.ShowWinnerHUDFix},
+    {"Widescreen",    "MinimapFix",         "1",    ConfigEntry::INT,   &cfg.MinimapFix},
+	{"Widescreen",    "VehicleIconFix",     "1",    ConfigEntry::INT,   &cfg.VehicleIconFix},
     {"AudioAndFocus", "MuteOnFocusLoss",    "1",    ConfigEntry::INT,   &cfg.MuteOnFocusLoss},
     {"AudioAndFocus", "PauseOnFocusLoss",   "1",    ConfigEntry::INT,   &cfg.PauseOnFocusLoss},
     {"Debug",         "AOBLog",             "0",    ConfigEntry::INT,   &cfg.AOBLog},
@@ -81,10 +85,23 @@ void LoadConfiguration() {
         else strcpy_s(g_szIniPath, "MashedFix.ini");
     } else strcpy_s(g_szIniPath, "MashedFix.ini");
 
-    if (GetFileAttributesA(g_szIniPath) == INVALID_FILE_ATTRIBUTES)
+    // Если файла нет — создаём со всеми значениями по умолчанию
+    if (GetFileAttributesA(g_szIniPath) == INVALID_FILE_ATTRIBUTES) {
         for (auto& e : g_ConfigTable)
             WritePrivateProfileStringA(e.section, e.key, e.def, g_szIniPath);
+    } else {
+        // Файл есть — проверяем каждый параметр; если отсутствует, дописываем дефолт
+        for (auto& e : g_ConfigTable) {
+            char buf[32] = {0};
+            GetPrivateProfileStringA(e.section, e.key, "", buf, sizeof(buf), g_szIniPath);
+            if (buf[0] == '\0') {
+                // Параметр не найден — записываем значение по умолчанию
+                WritePrivateProfileStringA(e.section, e.key, e.def, g_szIniPath);
+            }
+        }
+    }
 
+    // Читаем все параметры
     for (auto& e : g_ConfigTable) {
         if (e.type == ConfigEntry::INT)
             *(bool*)e.ptr = GetPrivateProfileIntA(e.section, e.key, atoi(e.def), g_szIniPath) != 0;
@@ -496,6 +513,7 @@ __declspec(naked) void hk_FlagLea2() {
         jmp flag_jmp_back_addr2
     }
 }
+
 // === HUD FIX ===
 void __cdecl hk_HUD_DrawMessageBox() {
     float origX = 0; bool saved = false;
@@ -620,6 +638,8 @@ namespace Pat {
     constexpr const char* Trampoline     = "55 8B EC 83 E4 F8 81 EC ? ? ? ? A1 ? ? ? ? 33 45 04 53 56 57 68 ? ? ? ? 89 84 24 ? ? ? ? E8";
     constexpr const char* PointWinner    = "83 EC 20 B0 FF 56 8B 74 24 2C 83 FE FF 88 44 24 08 88 44 24 09 88 44 24 0A 88 44 24 0B 88 44 24 04 C6 44 24 05 00 C6 44 24 06 00 88 44 24 07 C7 44 24 0C 00 00 A0 43 C7 44 24 10 00 00 70 43";
     constexpr const char* FldCenter      = "D9 05 C8 EE 5D 00";
+    constexpr const char* MinimapPos     = "83 EC 64 53 33 DB C7 44 24 44 9A 99 D9 3F C7 44 24 48 00 00 80 BF C7 44 24 4C 00 00 80 40";
+	constexpr const char* VehicleHudPos  = "D9 04 85 ? ? ? ? D9 E1";
 }
 
 // === INIT ===
@@ -665,6 +685,38 @@ DWORD WINAPI InitPlugin(LPVOID) {
         if (auto a = Find(Pat::DrawTextInRect)) orig_HUD_DrawTextInRect = (HUD_DrawTextInRect_t)a;
         if (auto a = Find(Pat::Sub4045D0)) orig_sub_4045D0 = (sub_4045D0_t)PlaceHook((void*)a, (void*)hk_sub_4045D0, 6);
     }
+
+    if (cfg.MinimapFix) {
+        if (auto a = Find(Pat::MinimapPos)) {
+            // Offset 10: float immediate in "mov [esp+44h], 3FD9999Ah" (1.7f -> 2.5f)
+            PatchFloat(a, 10, 2.4f);
+            Log("[OK] MinimapFix: patched 1.7 -> 2.4 at %s+10", AddrStr(a).c_str());
+        }
+    }
+	
+	if (cfg.VehicleIconFix && fFlagMultiplier > 1.0f) {
+    if (auto a = Find(Pat::VehicleHudPos)) {
+        // Извлекаем адрес g_vehicleHudPositions из инструкции
+        uintptr_t hudPosAddr = *(uintptr_t*)(a + 3);
+
+        // Валидация: первый float должен быть ~0.48
+        float check = *(float*)hudPosAddr;
+        if (check > 0.4f && check < 0.55f) {
+            // 4 иконки, stride = 3 float'а (X,Y,Z) = 12 байт
+            // Патчим только X (offset 0 в каждой тройке)
+            for (int i = 0; i < 4; i++) {
+                int off = i * 12;  // 0, 12, 24, 36
+                float oldX = *(float*)(hudPosAddr + off);
+                float newX = oldX * fFlagMultiplier;
+                PatchFloat(hudPosAddr, off, newX);
+            }
+            Log("[OK] VehicleIconFix: base=%s, mul=%.3f", AddrStr(hudPosAddr).c_str(), fFlagMultiplier);
+        } else {
+            Log("[WARN] VehicleIconFix: unexpected float %.4f at %s, skipping",
+                check, AddrStr(hudPosAddr).c_str());
+        }
+    }
+}
 
     if (auto a = Find(Pat::GameState)) g_GameState_ptr = *(int**)(a + 9);
 
